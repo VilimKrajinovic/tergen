@@ -1,67 +1,66 @@
 package tergen
 
 import "core:fmt"
+import "core:log"
 import "core:strings"
-import NS "core:sys/darwin/Foundation"
-import MTL "vendor:darwin/Metal"
-import CA "vendor:darwin/QuartzCore"
-import sdl "vendor:sdl2"
+import sdl "vendor:sdl3"
 
 when USE_METAL {
 	shader_source: string = #load("shaders.metal")
 
-	NS_String :: proc(s: string) -> ^NS.String {
-		return NS.String.alloc()->initWithOdinString(s)
-	}
-
 	platform_start :: proc(options: StartOptions) {
-		sdl.Init({.VIDEO, .EVENTS})
+		sdl.SetLogPriorities(.VERBOSE)
+		ok := sdl.Init({.VIDEO, .EVENTS});assert(ok)
+
 		window := sdl.CreateWindow(
 			strings.clone_to_cstring(options.title),
-			sdl.WINDOWPOS_UNDEFINED,
-			sdl.WINDOWPOS_UNDEFINED,
 			auto_cast options.width,
 			auto_cast options.height,
-			{.METAL, .ALLOW_HIGHDPI, .RESIZABLE},
-		)
-		sdl.ShowWindow(window)
+			{.METAL, .RESIZABLE},
+		);assert(window != nil)
 
+		sdl.ShowWindow(window)
 		user_quit := false
 
-		sdl.SetHint(sdl.HINT_RENDER_DRIVER, "metal")
-		renderer := sdl.CreateRenderer(window, -1, {.PRESENTVSYNC})
+		gpu := sdl.CreateGPUDevice({.METALLIB}, true, "metal");assert(gpu != nil)
+		ok = sdl.ClaimWindowForGPUDevice(gpu, window);assert(ok)
 
-		metal_layer := cast(^CA.MetalLayer)sdl.RenderGetMetalLayer(renderer)
-		metal_layer->setPixelFormat(.BGRA8Unorm_sRGB)
+		vertex_shader_info := sdl.GPUShaderCreateInfo {
+			code       = raw_data(shader_source),
+			code_size  = len(shader_source),
+			entrypoint = "basic_vertex",
+			format     = {.MSL},
+			stage      = .VERTEX,
+		}
+		vertex_shader := sdl.CreateGPUShader(gpu, vertex_shader_info)
+		assert(vertex_shader != nil)
 
-		metal_device := metal_layer->device()
-		command_queue := metal_device->newCommandQueue()
-
-		shader_library, err := metal_device->newLibraryWithSource(NS_String(shader_source), nil)
-		if err != nil {
-			fmt.println(err->localizedDescription()->odinString())
-			return
+		fragment_shader_info := sdl.GPUShaderCreateInfo {
+			code       = raw_data(shader_source),
+			code_size  = len(shader_source),
+			entrypoint = "basic_fragment",
+			format     = {.MSL},
+			stage      = .FRAGMENT,
 		}
 
-		vertex_fn := shader_library->newFunctionWithName(NS.AT("basic_vertex"))
-		fragment_fn := shader_library->newFunctionWithName(NS.AT("basic_fragment"))
-
-		pipeline_desc := MTL.RenderPipelineDescriptor.alloc()->init()
-		pipeline_desc->setVertexFunction(vertex_fn)
-		pipeline_desc->setFragmentFunction(fragment_fn)
-
-		color_attachment_desc := pipeline_desc->colorAttachments()->object(0)
-		color_attachment_desc->setPixelFormat(.BGRA8Unorm_sRGB)
-
-		pipeline, perr := metal_device->newRenderPipelineStateWithDescriptor(pipeline_desc)
-
-		if perr != nil {
-			fmt.println(perr->localizedDescription()->odinString())
-			return
+		fragment_shader := sdl.CreateGPUShader(gpu, fragment_shader_info)
+		assert(fragment_shader != nil)
+		color_targets := []sdl.GPUColorTargetDescription{{format = .B8G8R8A8_UNORM}}
+		graphics_pipeline_info := sdl.GPUGraphicsPipelineCreateInfo {
+			vertex_shader = vertex_shader,
+			fragment_shader = fragment_shader,
+			target_info = {
+				num_color_targets = 1,
+				color_target_descriptions = raw_data(color_targets),
+			},
+			primitive_type = .TRIANGLESTRIP,
 		}
+		graphics_pipeline := sdl.CreateGPUGraphicsPipeline(gpu, graphics_pipeline_info)
+		assert(graphics_pipeline != nil)
 
 
 		for {
+			// handle events
 			event: sdl.Event
 			for sdl.PollEvent(&event) {
 				#partial switch event.type {
@@ -70,28 +69,31 @@ when USE_METAL {
 				}
 			}
 
-			NS.scoped_autoreleasepool()
-
-			drawable := metal_layer->nextDrawable()
-
-			pass_descriptor := MTL.RenderPassDescriptor.renderPassDescriptor()
-
-			color_attachment := pass_descriptor->colorAttachments()->object(0)
-			color_attachment->setClearColor({0.2, 0.2, 0.9, 1.0})
-			color_attachment->setLoadAction(.Clear)
-			color_attachment->setStoreAction(.Store)
-			color_attachment->setTexture(drawable->texture())
-
-			command_buffer := command_queue->commandBuffer()
-			command_encoder := command_buffer->renderCommandEncoderWithDescriptor(pass_descriptor)
-
-			command_encoder->setRenderPipelineState(pipeline)
-			command_encoder->drawPrimitivesWithInstanceCount(.TriangleStrip, 0, 4, 1)
+			// update game state
 
 
-			command_encoder->endEncoding()
-			command_buffer->presentDrawable(drawable)
-			command_buffer->commit()
+			//render
+			command_buffer := sdl.AcquireGPUCommandBuffer(gpu)
+			swapchain_texture: ^sdl.GPUTexture
+			ok = sdl.WaitAndAcquireGPUSwapchainTexture(
+				command_buffer,
+				window,
+				&swapchain_texture,
+				nil,
+				nil,
+			);assert(ok)
+
+			color_target_info := sdl.GPUColorTargetInfo {
+				texture     = swapchain_texture,
+				clear_color = {0, 1.0, 1.0, 1.0},
+				load_op     = .CLEAR,
+				store_op    = .STORE,
+			}
+			render_pass := sdl.BeginGPURenderPass(command_buffer, &color_target_info, 1, nil)
+			sdl.BindGPUGraphicsPipeline(render_pass, graphics_pipeline)
+			sdl.DrawGPUPrimitives(render_pass, 4, 1, 0, 0)
+			sdl.EndGPURenderPass(render_pass)
+			ok = sdl.SubmitGPUCommandBuffer(command_buffer);assert(ok)
 
 			if user_quit do break
 		}
