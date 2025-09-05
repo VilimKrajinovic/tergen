@@ -1,46 +1,34 @@
 #include <metal_stdlib>
 using namespace metal;
 
-struct VertexData{
+struct VertexData {
   float4 position [[position]];
   float4 color;
 };
 
-struct Uniforms {
-    float4x4 mvp;
+struct VeertexInput {
+  float3 position [[attribute(0)]];
+  float4 color [[attribute(1)]];
 };
 
-vertex VertexData basic_vertex(
-    unsigned int vertex_id [[vertex_id]],
-    constant Uniforms& uniforms [[buffer(0)]]
-    ){
-  float2 vertices [] = {
-    {0.5, 0.5},
-    {0.5, -0.5},
-    {-0.5, 0.5},
-    {-0.5, -0.5},
-  };
+struct Uniforms {
+  float4x4 mvp;
+  float time;
+};
 
-  float3 colors[] = {
-    {0.8, 0.2, 0.2},
-    {0.2, 0.8, 0.2}
-  };
-
-  float2 v = vertices[vertex_id];
-  float3 c = colors[vertex_id/2];
-
+vertex VertexData basic_vertex(VeertexInput v_in [[stage_in]],
+                               constant Uniforms &uniforms [[buffer(0)]]) {
   VertexData out;
+  float3 position = v_in.position;
 
-  out.position = float4(v,0,1);
-  out.color = float4(c, 1);
+  out.position = float4(position, 1);
+  out.color = v_in.color;
 
   out.position = uniforms.mvp * out.position;
   return out;
 }
 
-
-fragment float4 basic_fragment(
-    VertexData data [[stage_in]]
-    ){
+fragment float4 basic_fragment(VertexData data [[stage_in]],
+                               constant Uniforms &uniforms [[buffer(0)]]) {
   return data.color;
 }

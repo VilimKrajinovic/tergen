@@ -1,7 +1,7 @@
 package tergen
 
 main :: proc() {
-	start({width = 800, height = 600, title = "Tergen app", frame_proc = frame_proc})
+	start({width = 1400, height = 900, title = "Tergen app", frame_proc = frame_proc})
 }
 
 frame_proc :: proc() {

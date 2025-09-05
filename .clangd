@@ -1,0 +1,29 @@
+# Save this as .clangd in your project root
+CompileFlags:
+  Add: 
+    - "-x"
+    - "c++"
+    - "-std=c++17"
+    - "-Wno-everything" # Suppress all warnings for metal files
+  Remove: 
+    - "-fdelayed-template-parsing"
+
+Diagnostics:
+  Suppress: 
+    - "unknown_warning_option"
+    - "unknown_argument" 
+    - "unused_variable"
+    - "unused_parameter"
+    - "unknown_pragmas"
+  ClangTidy:
+    Remove: "*" # Disable all clang-tidy checks
+
+# Specific settings for metal files
+If:
+  PathMatch: ".*\\.metal$"
+CompileFlags:
+  Add: 
+    - "-DMETAL_SHADER=1"
+    - "-Wno-everything"
+Diagnostics:
+  Suppress: "*" # Suppress all diagnostics for .metal files
