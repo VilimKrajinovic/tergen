@@ -1,1 +1,1 @@
-odin build ./src -debug -out=./out/ter.gen
+odin build ./src -debug -out=./out/tergen

@@ -20,9 +20,10 @@ when USE_METAL {
 	}
 
 	Vertex_Data :: struct {
-		pos:   Vec3,
-		color: sdl.FColor,
-		uv:    [2]f32,
+		pos:    Vec3,
+		color:  sdl.FColor,
+		uv:     [2]f32,
+		normal: Vec3,
 	}
 
 	WHITE :: sdl.FColor{1, 1, 1, 1}
@@ -78,7 +79,6 @@ when USE_METAL {
 			},
 		)
 
-
 		vertices := []Vertex_Data {
 			{pos = {-0.5, 0.5, 0.0}, color = WHITE, uv = {0, 0}}, // tl
 			{pos = {0.5, 0.5, 0.0}, color = WHITE, uv = {1, 0}}, // tr
@@ -92,9 +92,11 @@ when USE_METAL {
 		if success {
 			vertices = model_data.vertices
 			indices = model_data.indices
-			defer free_obj_data(&model_data)
+			free_obj_data(&model_data)
 		}
 
+		num_vertices := u32(len(vertices))
+		num_indices := u32(len(indices))
 		vertices_byte_size := len(vertices) * size_of(vertices[0])
 		indices_byte_size := len(indices) * size_of(indices[0])
 
@@ -165,10 +167,28 @@ when USE_METAL {
 
 		sampler := sdl.CreateGPUSampler(gpu, {})
 
+		window_size: [2]i32
+		ok = sdl.GetWindowSize(window, &window_size.x, &window_size.y);assert(ok)
+
+	// Create depth texture
+	depth_texture := sdl.CreateGPUTexture(
+		gpu,
+		sdl.GPUTextureCreateInfo {
+			type = .D2,
+			format = .D32_FLOAT,
+			usage = {.DEPTH_STENCIL_TARGET},
+			width = u32(window_size.x),
+			height = u32(window_size.y),
+			layer_count_or_depth = 1,
+			num_levels = 1,
+		},
+	)
+
 		vertex_attribtues := []sdl.GPUVertexAttribute {
 			{location = 0, format = .FLOAT3, offset = u32(offset_of(Vertex_Data, pos))},
 			{location = 1, format = .FLOAT4, offset = u32(offset_of(Vertex_Data, color))},
 			{location = 2, format = .FLOAT2, offset = u32(offset_of(Vertex_Data, uv))},
+			{location = 3, format = .FLOAT3, offset = u32(offset_of(Vertex_Data, normal))},
 		}
 
 		graphics_pipeline := sdl.CreateGPUGraphicsPipeline(
@@ -190,9 +210,16 @@ when USE_METAL {
 					color_target_descriptions = &(sdl.GPUColorTargetDescription {
 							format = sdl.GetGPUSwapchainTextureFormat(gpu, window),
 						}),
+					has_depth_stencil_target = true,
+					depth_stencil_format = .D32_FLOAT,
 				},
 				primitive_type = .TRIANGLELIST,
 				rasterizer_state = {cull_mode = .NONE},
+				depth_stencil_state = {
+					enable_depth_test = true,
+					enable_depth_write = true,
+					compare_op = .LESS,
+				},
 			},
 		);assert(graphics_pipeline != nil)
 
@@ -201,8 +228,6 @@ when USE_METAL {
 		sdl.ReleaseGPUShader(gpu, fragment_shader)
 
 
-		window_size: [2]i32
-		ok = sdl.GetWindowSize(window, &window_size.x, &window_size.y);assert(ok)
 		projection_matrix := linalg.matrix4_perspective_f32(
 			linalg.to_radians(f32(70)),
 			f32(window_size.x) / f32(window_size.y),
@@ -246,7 +271,7 @@ when USE_METAL {
 
 			rotation += ROTATION_SPEED * delta_time
 			model_matrix :=
-				linalg.matrix4_translate_f32({0, -2, -15}) *
+				linalg.matrix4_translate_f32({0, -4, -14}) *
 				linalg.matrix4_rotate_f32(rotation, {0, 1, 0})
 
 			uniforms: Uniforms = {
@@ -260,7 +285,17 @@ when USE_METAL {
 				load_op     = .CLEAR,
 				store_op    = .STORE,
 			}
-			render_pass := sdl.BeginGPURenderPass(command_buffer, &color_target_info, 1, nil)
+
+			depth_stencil_target_info := sdl.GPUDepthStencilTargetInfo {
+				texture         = depth_texture,
+				clear_depth     = 1.0,
+				load_op         = .CLEAR,
+				store_op        = .DONT_CARE,
+				stencil_load_op = .DONT_CARE,
+				stencil_store_op = .DONT_CARE,
+			}
+
+			render_pass := sdl.BeginGPURenderPass(command_buffer, &color_target_info, 1, &depth_stencil_target_info)
 			sdl.BindGPUGraphicsPipeline(render_pass, graphics_pipeline)
 			sdl.BindGPUVertexBuffers(
 				render_pass,
@@ -276,7 +311,7 @@ when USE_METAL {
 				&(sdl.GPUTextureSamplerBinding{texture = texture, sampler = sampler}),
 				1,
 			)
-			sdl.DrawGPUIndexedPrimitives(render_pass, u32(len(indices)), 1, 0, 0, 0)
+			sdl.DrawGPUIndexedPrimitives(render_pass, num_indices, 1, 0, 0, 0)
 			sdl.EndGPURenderPass(render_pass)
 			ok = sdl.SubmitGPUCommandBuffer(command_buffer);assert(ok)
 

@@ -107,9 +107,10 @@ load_obj :: proc(file_path: string) -> (OBJ_Data, bool) {
 						}
 
 						vertex := Vertex_Data {
-							pos   = positions[pos_idx] if pos_idx >= 0 && pos_idx < len(positions) else Vec3{0, 0, 0},
-							color = sdl.FColor{1, 1, 1, 1}, // Default white color
-							uv    = uvs[uv_idx] if uv_idx >= 0 && uv_idx < len(uvs) else Vec2{0, 0},
+							pos    = positions[pos_idx] if pos_idx >= 0 && pos_idx < len(positions) else Vec3{0, 0, 0},
+							normal = normals[norm_idx] if norm_idx >= 0 && norm_idx < len(normals) else Vec3{0, 0, 0},
+							color  = sdl.FColor{1, 1, 1, 1}, // Default white color
+							uv     = uvs[uv_idx] if uv_idx >= 0 && uv_idx < len(uvs) else Vec2{0, 0},
 						}
 
 						new_idx := u32(len(face_vertices))
