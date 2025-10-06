@@ -233,7 +233,6 @@ when USE_METAL {
 
 			// update game state
 
-
 			//render passes
 			command_buffer := sdl.AcquireGPUCommandBuffer(gpu)
 			swapchain_texture: ^sdl.GPUTexture
@@ -305,9 +304,5 @@ when USE_METAL {
 				num_samplers = num_samplers,
 			},
 		)
-	}
-
-	platform_draw_rect :: proc(placement: float4, color: float4) {
-
 	}
 }

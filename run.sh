@@ -1,1 +1,1 @@
-odin run ./src
+odin run ./src 
