@@ -10,6 +10,7 @@ import stbi "vendor:stb/image"
 
 when USE_METAL {
 	shader_source: []u8 = #load("./shaders/shaders.metal")
+	Vec2 :: [2]f32
 	Vec3 :: [3]f32
 	Vec4 :: [4]f32
 
@@ -20,9 +21,11 @@ when USE_METAL {
 
 	Vertex_Data :: struct {
 		pos:   Vec3,
-		color: Vec4,
+		color: sdl.FColor,
 		uv:    [2]f32,
 	}
+
+	WHITE :: sdl.FColor{1, 1, 1, 1}
 
 	ROTATION_SPEED := linalg.to_radians(f32(90))
 
@@ -76,22 +79,23 @@ when USE_METAL {
 		)
 
 
-		//create texture on gpu
-		//upload pixels to the gpu texture
-		//assign texture coordinates to vertices
-		//create sampler for texture
-		//make shader sample colors from texture
-
-
 		vertices := []Vertex_Data {
-			{pos = {-0.5, 0.5, 0.0}, color = {1, 0, 0, 1}, uv = {0, 0}}, // tl
-			{pos = {0.5, 0.5, 0.0}, color = {0, 1, 0, 1}, uv = {1, 0}}, // tr
-			{pos = {-0.5, -0.5, 0.0}, color = {0, 0, 1, 1}, uv = {0, 1}}, //bl
-			{pos = {0.5, -0.5, 0.0}, color = {0, 0, 1, 1}, uv = {1, 1}}, //br
+			{pos = {-0.5, 0.5, 0.0}, color = WHITE, uv = {0, 0}}, // tl
+			{pos = {0.5, 0.5, 0.0}, color = WHITE, uv = {1, 0}}, // tr
+			{pos = {-0.5, -0.5, 0.0}, color = WHITE, uv = {0, 1}}, //bl
+			{pos = {0.5, -0.5, 0.0}, color = WHITE, uv = {1, 1}}, //br
 		}
-		vertices_byte_size := len(vertices) * size_of(vertices[0])
 
-		indices := []u16{0, 1, 2, 2, 1, 3}
+		indices := []u32{0, 1, 2, 2, 1, 3}
+
+		model_data, success := load_obj("./assets/dragon.obj")
+		if success {
+			vertices = model_data.vertices
+			indices = model_data.indices
+			defer free_obj_data(&model_data)
+		}
+
+		vertices_byte_size := len(vertices) * size_of(vertices[0])
 		indices_byte_size := len(indices) * size_of(indices[0])
 
 		vertex_buf := sdl.CreateGPUBuffer(
@@ -187,7 +191,8 @@ when USE_METAL {
 							format = sdl.GetGPUSwapchainTextureFormat(gpu, window),
 						}),
 				},
-				primitive_type = .TRIANGLESTRIP,
+				primitive_type = .TRIANGLELIST,
+				rasterizer_state = {cull_mode = .NONE},
 			},
 		);assert(graphics_pipeline != nil)
 
@@ -242,7 +247,7 @@ when USE_METAL {
 
 			rotation += ROTATION_SPEED * delta_time
 			model_matrix :=
-				linalg.matrix4_translate_f32({0, 0, -5}) *
+				linalg.matrix4_translate_f32({0, -2, -15}) *
 				linalg.matrix4_rotate_f32(rotation, {0, 1, 0})
 
 			uniforms: Uniforms = {
@@ -264,7 +269,7 @@ when USE_METAL {
 				&(sdl.GPUBufferBinding{buffer = vertex_buf, offset = 0}),
 				1,
 			)
-			sdl.BindGPUIndexBuffer(render_pass, {buffer = index_buf}, ._16BIT)
+			sdl.BindGPUIndexBuffer(render_pass, {buffer = index_buf}, ._32BIT)
 			sdl.PushGPUVertexUniformData(command_buffer, 0, &uniforms, size_of(uniforms))
 			sdl.BindGPUFragmentSamplers(
 				render_pass,
@@ -272,7 +277,7 @@ when USE_METAL {
 				&(sdl.GPUTextureSamplerBinding{texture = texture, sampler = sampler}),
 				1,
 			)
-			sdl.DrawGPUIndexedPrimitives(render_pass, 6, 1, 0, 0, 0)
+			sdl.DrawGPUIndexedPrimitives(render_pass, u32(len(indices)), 1, 0, 0, 0)
 			sdl.EndGPURenderPass(render_pass)
 			ok = sdl.SubmitGPUCommandBuffer(command_buffer);assert(ok)
 

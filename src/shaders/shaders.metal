@@ -35,6 +35,7 @@ fragment float4 basic_fragment(VertexData data [[stage_in]],
                                constant Uniforms &uniforms [[buffer(0)]],
                                texture2d<float> diffuse_texture [[texture(0)]],
                                sampler texture_sampler [[sampler(0)]]) {
-  float4 texture_color = diffuse_texture.sample(texture_sampler, data.uv);
-  return texture_color * data.color;
+  // float4 texture_color = diffuse_texture.sample(texture_sampler, data.uv);
+  // return texture_color * data.color;
+  return data.color;
 }
